@@ -28,7 +28,7 @@ dependencyResolutionManagement {
 
 Add dependency to module build.gradle.kts:
 ```kotlin
-implementation("com.github.pascaladitia:FloatingWidgetCompose:1.0.0")
+implementation("com.github.pascaladitia:FloatingWidgetCompose:v1.0.0")
 ```
 
 ## Overlay Permission (Required)
