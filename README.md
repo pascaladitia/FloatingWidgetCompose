@@ -11,8 +11,15 @@ FloatingWidgetCompose is an Android library that allows you to display Jetpack C
 - Supports Android API 24+
 
 ## Demo Video
-Demo video (replace this link with your own video later):
-https://youtu.be/YOUR_VIDEO_LINK
+Demo video :
+<details>
+<summary>▶ Click to watch demo</summary>
+<br/>
+<video src="https://github.com/user-attachments/assets/bb2a342c-0bac-46fa-870c-49eeb3f428bf"
+       width="360"
+       controls>
+</video>
+</details>
 
 ## Installation
 Add JitPack repository to settings.gradle.kts:
