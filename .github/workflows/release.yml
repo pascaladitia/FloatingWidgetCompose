@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_VERSION: v1.1.0
+  RELEASE_TITLE: FloatingWidgetCompose v1.1.0
+  RELEASE_NOTES: |
+    New release from main.
+
+    Highlights:
+    - Safer floating widget service lifecycle.
+    - Start and stop controls in the sample app.
+    - Improved overlay permission handling.
+
+jobs:
+  release:
+    name: Build and publish GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check release tag
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_VERSION}" > /dev/null 2>&1; then
+            echo "Tag ${RELEASE_VERSION} already exists. Update RELEASE_VERSION in .github/workflows/release.yml before merging."
+            exit 1
+          fi
+
+      - name: Build artifacts
+        run: ./gradlew :floating-compose-widget:assembleRelease :app:assembleDebug
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${RELEASE_VERSION}" -m "${RELEASE_TITLE}"
+          git push origin "${RELEASE_VERSION}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          name: ${{ env.RELEASE_TITLE }}
+          body: ${{ env.RELEASE_NOTES }}
+          files: |
+            floating-compose-widget/build/outputs/aar/floating-compose-widget-release.aar
+            app/build/outputs/apk/debug/app-debug.apk

@@ -3,7 +3,6 @@
     <application>
         <service
             android:name=".FloatingWidgetService"
-            android:exported="false"
-            android:permission="android.permission.SYSTEM_ALERT_WINDOW"/>
+            android:exported="false" />
     </application>
 </manifest>

@@ -9,46 +9,65 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.isVisible
 
 internal class FloatingWidgetService : Service() {
 
     companion object {
-        lateinit var content: (@androidx.compose.runtime.Composable () -> Unit)
-        lateinit var config: FloatingWidgetConfig
+        var content: (@androidx.compose.runtime.Composable () -> Unit)? = null
+        var config: FloatingWidgetConfig? = null
     }
 
-    private lateinit var wm: WindowManager
+    private var wm: WindowManager? = null
     private var composeView: ComposeView? = null
+    private var owner: OverlayLifecycleOwner? = null
 
     override fun onCreate() {
         super.onCreate()
-        if (!Settings.canDrawOverlays(this)) stopSelf()
+        if (!Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return
+        }
+
+        val widgetContent = content
+        val widgetConfig = config
+        if (widgetContent == null || widgetConfig == null) {
+            stopSelf()
+            return
+        }
 
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        val owner = OverlayLifecycleOwner().apply { onCreate() }
+        val lifecycleOwner = OverlayLifecycleOwner().apply { onCreate() }
+        owner = lifecycleOwner
 
         composeView = ComposeView(this).apply {
             setTag(
                 androidx.lifecycle.runtime.R.id.view_tree_lifecycle_owner,
-                owner
+                lifecycleOwner
             )
             setTag(
                 androidx.savedstate.R.id.view_tree_saved_state_registry_owner,
-                owner
+                lifecycleOwner
             )
             setTag(
                 androidx.lifecycle.viewmodel.R.id.view_tree_view_model_store_owner,
-                owner
+                lifecycleOwner
             )
-            setContent { content() }
+            setContent { widgetContent() }
         }
 
-        wm.addView(composeView, createParams())
-        owner.onStart()
-        owner.onResume()
+        runCatching {
+            wm?.addView(composeView, createParams(widgetConfig))
+            lifecycleOwner.onStart()
+            lifecycleOwner.onResume()
+        }.onFailure {
+            composeView = null
+            stopSelf()
+        }
     }
 
-    private fun createParams(): WindowManager.LayoutParams {
+    @Suppress("DEPRECATION")
+    private fun createParams(config: FloatingWidgetConfig): WindowManager.LayoutParams {
         val type =
             if (Build.VERSION.SDK_INT >= 26)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -65,7 +84,10 @@ internal class FloatingWidgetService : Service() {
                 WindowManager.LayoutParams.MATCH_PARENT
             else
                 WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (config.sizeMode == SizeMode.FULL)
+                WindowManager.LayoutParams.MATCH_PARENT
+            else
+                WindowManager.LayoutParams.WRAP_CONTENT,
             type,
             flags,
             PixelFormat.TRANSLUCENT
@@ -77,9 +99,24 @@ internal class FloatingWidgetService : Service() {
     }
 
     override fun onDestroy() {
-        composeView?.let { wm.removeView(it) }
+        composeView?.let { view ->
+            runCatching {
+                if (view.isAttachedToWindow || view.isVisible) {
+                    wm?.removeView(view)
+                }
+            }
+        }
+        owner?.onDestroy()
+        owner = null
         composeView = null
         super.onDestroy()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!Settings.canDrawOverlays(this) || content == null || config == null) {
+            stopSelf(startId)
+        }
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
