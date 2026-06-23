@@ -1,30 +1,38 @@
 # FloatingWidgetCompose
 
-FloatingWidgetCompose is an Android library that allows you to display Jetpack Compose UI as a system-level floating overlay similar to chat heads or floating widgets. This library is designed to be lightweight, reusable, and easy to integrate into any Android application that uses Jetpack Compose.
+FloatingWidgetCompose is a lightweight Android library for rendering Jetpack Compose UI inside a system overlay window. It is useful for chat-head style widgets, quick actions, assistive floating controls, and small always-on-top Compose surfaces.
 
 ## Features
-- Display any Jetpack Compose UI as a floating overlay
-- Fully customizable Composable content
-- Optional touch interaction (touchable or non-touchable)
-- Flexible sizing (WRAP or FULL width)
-- Lifecycle-safe Compose integration inside a Service
+
+- Render any Jetpack Compose UI as a floating overlay
+- Start and stop the floating widget explicitly from your app
+- Request and check overlay permission with helper APIs
+- Use touchable or click-through overlay behavior
+- Choose wrapped content size or a full-screen drag layer
+- Drag floating content with regular Compose gesture handling
+- Lifecycle-aware Compose rendering inside an Android `Service`
+- Safe guards for missing permission, process recreation, and service cleanup
 - Supports Android API 24+
 
-## Demo Video
-Demo video :
-<details>
-<summary>▶ Click to watch demo</summary>
-<br/>
-<video src="https://github.com/user-attachments/assets/bb2a342c-0bac-46fa-870c-49eeb3f428bf"
-       width="360"
-       controls>
-</video>
-</details>
+## Demo App
 
-## Installation
-Add JitPack repository to settings.gradle.kts:
+The sample app includes:
+
+- Overlay permission status
+- `Grant Permission`, `Start Floating`, and `Stop` buttons
+- Three widget examples: draggable card, counter widget, and quick action widget
+- Toggle for full-screen drag layer
+- Toggle for touchable or click-through behavior
+
+## Installation With JitPack
+
+FloatingWidgetCompose is distributed through JitPack. Use a GitHub release tag as the dependency version, for example `v1.0.0`.
+
+Add JitPack to `settings.gradle.kts`:
+
 ```kotlin
 dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -33,64 +41,95 @@ dependencyResolutionManagement {
 }
 ```
 
-Add dependency to module build.gradle.kts:
+Add the dependency to your app module `build.gradle.kts`:
+
 ```kotlin
-implementation("com.github.pascaladitia:FloatingWidgetCompose:v1.0.0")
+dependencies {
+    implementation("com.github.pascaladitia:FloatingWidgetCompose:v1.0.0")
+}
 ```
 
-## Overlay Permission (Required)
-This library requires Android SYSTEM_ALERT_WINDOW permission to display content above other applications.
+For local development inside this repository, the sample app uses the local module:
 
-Add permission to AndroidManifest.xml (app module):
+```kotlin
+implementation(project(":floating-compose-widget"))
+```
+
+## Required Permission
+
+System overlays require `SYSTEM_ALERT_WINDOW`.
+
+Add this permission to your app module `AndroidManifest.xml`:
+
 ```xml
 <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 ```
 
-Overlay permission cannot be granted automatically. The user must enable it manually from system settings.
+Users must grant overlay permission manually from Android system settings. The library provides `openOverlayPermissionSettings(context)` to send users to the correct screen when possible.
 
-Typical path:
-Settings → Display over other apps → Your App → Allow
-
-Important notes:
-- The app must be installed and opened at least once
-- Overlay permission will not appear if the app has never been launched
-- Some OEM devices (Xiaomi, Oppo, Vivo) may place this setting in a different menu
+Some OEM Android builds, especially Xiaomi, Oppo, and Vivo, may place overlay permission and background restrictions in custom settings screens.
 
 ## Usage
-Basic example:
-```kotlin
-@Composable
-fun SampleFloatingWidget() {
-    val context = LocalContext.current
 
-    FloatingWidgetCompose.start(
-        context = context,
-        config = FloatingWidgetConfig(
-            touchable = true,
-            sizeMode = SizeMode.WRAP
-        )
+Check permission and open settings when needed:
+
+```kotlin
+if (!FloatingWidgetCompose.canDrawOverlays(context)) {
+    FloatingWidgetCompose.openOverlayPermissionSettings(context)
+    return
+}
+```
+
+Start a basic floating widget:
+
+```kotlin
+val started = FloatingWidgetCompose.start(
+    context = context,
+    config = FloatingWidgetConfig(
+        touchable = true,
+        sizeMode = SizeMode.WRAP,
+        startX = 24,
+        startY = 160
+    )
+) {
+    Surface(
+        modifier = Modifier.padding(16.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Black
     ) {
-        Surface(
+        Text(
+            text = "Floating Compose",
             modifier = Modifier.padding(16.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = Color.Black
-        ) {
-            Text(
-                text = "Floating Compose",
-                modifier = Modifier.padding(16.dp),
-                color = Color.White
-            )
-        }
+            color = Color.White
+        )
     }
 }
 ```
 
-Stop floating widget:
+Stop the floating widget:
+
 ```kotlin
 FloatingWidgetCompose.stop(context)
 ```
 
+## Draggable Example
+
+Use `SizeMode.FULL` when you want a full-screen transparent gesture layer and draggable floating content:
+
+```kotlin
+FloatingWidgetCompose.start(
+    context = context,
+    config = FloatingWidgetConfig(
+        touchable = true,
+        sizeMode = SizeMode.FULL
+    )
+) {
+    DraggableFloatingContent()
+}
+```
+
 ## Configuration
+
 ```kotlin
 FloatingWidgetConfig(
     touchable = true,
@@ -100,58 +139,92 @@ FloatingWidgetConfig(
 )
 ```
 
-SizeMode:
-- WRAP → Overlay wraps content size
-- FULL → Overlay takes full screen width
+Options:
+
+- `touchable`: when `true`, the overlay can receive touch events; when `false`, touches pass through to apps behind it.
+- `sizeMode = SizeMode.WRAP`: the overlay wraps its Compose content.
+- `sizeMode = SizeMode.FULL`: the overlay covers the screen, which is useful for custom drag handling.
+- `startX` and `startY`: initial overlay position passed to `WindowManager.LayoutParams`.
 
 ## Important Usage Rules
-- Do not call FloatingWidgetCompose.start() inside @Preview
-- Overlay permission must be granted before starting the widget
-- App must be launched at least once before requesting permission
 
-Wrong usage:
+- Start the widget from an explicit user action, such as a button click.
+- Do not call `FloatingWidgetCompose.start()` directly from a Composable body that can recompose.
+- Do not start the widget from `@Preview`.
+- Check or request overlay permission before starting the widget.
+- Expect OEM-specific overlay and battery restrictions on some devices.
+
+Wrong:
+
 ```kotlin
-@Preview
 @Composable
-fun Preview() {
-    SampleFloatingWidget()
+fun Screen() {
+    FloatingWidgetCompose.start(context, config) {
+        Text("This can run again during recomposition")
+    }
 }
 ```
 
-Correct usage:
+Correct:
+
 ```kotlin
-@Preview
-@Composable
-fun Preview() {
-    Text("Preview only")
+Button(
+    onClick = {
+        FloatingWidgetCompose.start(context, config) {
+            Text("Started by user action")
+        }
+    }
+) {
+    Text("Start Floating")
 }
 ```
 
-## How It Works
-The library starts an Android Service, attaches a ComposeView to WindowManager, renders your Composable content inside the overlay window, and uses a custom lifecycle owner to ensure Compose works correctly outside an Activity context.
+## Release Workflow
+
+This repository includes a GitHub Actions workflow at `.github/workflows/release.yml`.
+
+When changes are merged into `main`, the workflow:
+
+1. Builds the library release artifact and sample debug APK.
+2. Creates a Git tag from `RELEASE_VERSION`.
+3. Creates a GitHub Release with `RELEASE_TITLE` and `RELEASE_NOTES`.
+4. Uploads the generated AAR and sample APK as release assets.
+
+Before merging a release commit into `main`, update these values in the workflow:
+
+```yaml
+env:
+  RELEASE_VERSION: v1.1.0
+  RELEASE_TITLE: FloatingWidgetCompose v1.1.0
+  RELEASE_NOTES: |
+    Add your release notes here.
+```
+
+JitPack can then consume the new GitHub tag:
+
+```kotlin
+implementation("com.github.pascaladitia:FloatingWidgetCompose:v1.1.0")
+```
 
 ## Compatibility
+
 - Minimum SDK: 24
-- Recommended Android version: 8.0+ (API 26+)
+- Target SDK: 36
 - Kotlin: 2.0+
-- Jetpack Compose: Latest stable
+- Jetpack Compose: stable Compose BOM
 
 ## Known Limitations
-- Overlay permission must be granted manually
-- Some OEM devices may aggressively restrict overlays or background services
-- Battery optimization may stop the overlay service
+
+- Overlay permission must be granted manually by the user.
+- Some OEM devices can restrict overlays or background services.
+- Battery optimization may stop long-running overlay behavior.
+- Android may recreate the service after process death; the library stops safely when in-memory Compose content is no longer available.
 
 ## License
-MIT License
 
-Copyright (c) 2026 Pascal Aditia Muclis
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files to deal in the Software without restriction including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and or sell copies of the Software and to permit persons to whom the Software is furnished to do so subject to the following conditions.
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED AS IS WITHOUT WARRANTY OF ANY KIND EXPRESS OR IMPLIED INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM DAMAGES OR OTHER LIABILITY WHETHER IN AN ACTION OF CONTRACT TORT OR OTHERWISE ARISING FROM OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+MIT License. See [LICENSE](LICENSE).
 
 ## Author
+
 Pascal Aditia  
 GitHub: https://github.com/pascaladitia
